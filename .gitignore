@@ -1,0 +1,10 @@
+/target
+*.kdbx
+*.bak*.kdbx
+
+# 前端
+/ui/node_modules
+/ui/dist
+
+# Tauri 建置時產生
+/crates/inkkeep-app/gen/schemas

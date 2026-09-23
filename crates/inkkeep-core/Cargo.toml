@@ -1,0 +1,26 @@
+[package]
+name = "inkkeep-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rand.workspace = true
+unicode-normalization.workspace = true
+url.workspace = true
+keepass = { version = "0.15", features = ["save_kdbx4"] }
+argon2 = { package = "rust-argon2", version = "3" }
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+zeroize = { version = "1", features = ["derive"] }
+# bundled 內建 SQLite，不依賴系統安裝的版本
+rusqlite = { version = "0.32", features = ["bundled"] }
+x25519-dalek = { version = "2", features = ["static_secrets", "zeroize"] }
+hkdf = "0.12"
+sha2 = "0.10"
+csv = "1"

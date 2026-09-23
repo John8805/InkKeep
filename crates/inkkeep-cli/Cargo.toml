@@ -1,0 +1,10 @@
+[package]
+name = "inkkeep-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+inkkeep-core = { path = "../inkkeep-core" }
+clap = { version = "4", features = ["derive"] }
+chrono.workspace = true

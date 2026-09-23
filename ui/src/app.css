@@ -1,0 +1,103 @@
+/* 深色是預設。主題由 <html data-theme> 決定：
+   "system" 交給 prefers-color-scheme，"light" / "dark" 直接指定。
+   明確指定的兩塊放在媒體查詢後面，同特異度下後者勝出。 */
+:root {
+  --bg: #16181d;
+  --bg-raised: #1e2128;
+  --bg-hover: #272b34;
+  --bg-sel: #2f5aa8;
+  --fg: #e6e8ec;
+  --fg-dim: #969ba6;
+  --border: #2c3039;
+  --accent: #6ea8fe;
+  --danger: #ff6b6b;
+  --radius: 8px;
+  font-size: 15px;
+}
+
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"] {
+    --bg: #f7f8fa;
+    --bg-raised: #ffffff;
+    --bg-hover: #eceef2;
+    --bg-sel: #d6e4ff;
+    --fg: #1b1e23;
+    --fg-dim: #666d78;
+    --border: #d9dde4;
+    --accent: #2f6fd0;
+  }
+}
+
+html[data-theme="light"] {
+  --bg: #f7f8fa;
+  --bg-raised: #ffffff;
+  --bg-hover: #eceef2;
+  --bg-sel: #d6e4ff;
+  --fg: #1b1e23;
+  --fg-dim: #666d78;
+  --border: #d9dde4;
+  --accent: #2f6fd0;
+}
+
+html[data-theme="dark"] {
+  --bg: #16181d;
+  --bg-raised: #1e2128;
+  --bg-hover: #272b34;
+  --bg-sel: #2f5aa8;
+  --fg: #e6e8ec;
+  --fg-dim: #969ba6;
+  --border: #2c3039;
+  --accent: #6ea8fe;
+  --danger: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Noto Sans TC", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover { background: var(--bg-hover); }
+button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+input, textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.muted { color: var(--fg-dim); }
+.mono { font-family: "Cascadia Code", Consolas, monospace; }

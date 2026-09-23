@@ -1,0 +1,34 @@
+{
+  "productName": "InkKeep",
+  "version": "0.1.0",
+  "identifier": "app.inkkeep",
+  "build": {
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "InkKeep",
+        "width": 800,
+        "height": 600,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "resizable": true,
+        "visible": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}
