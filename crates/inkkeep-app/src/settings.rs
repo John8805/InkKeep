@@ -51,6 +51,8 @@ pub struct InjectSettings {
     pub focus_timeout_ms: u64,
     pub paste_settle_ms: u64,
     pub type_delay_ms: u64,
+    /// 貼上後等多久才還原原本的剪貼簿文字。太短的話，目標程式會貼到還原後的內容。
+    pub restore_delay_ms: u64,
     /// true 表示敏感項目預設走 Virtual 模式。
     /// 中文輸入法下 Virtual 無效，所以預設是 false（Unicode）。
     pub virtual_input: bool,
@@ -62,6 +64,7 @@ impl Default for InjectSettings {
             focus_timeout_ms: 300,
             paste_settle_ms: 30,
             type_delay_ms: 2,
+            restore_delay_ms: 300,
             virtual_input: false,
         }
     }
@@ -113,6 +116,7 @@ impl Settings {
         self.inject.focus_timeout_ms = self.inject.focus_timeout_ms.clamp(0, 5000);
         self.inject.paste_settle_ms = self.inject.paste_settle_ms.clamp(0, 2000);
         self.inject.type_delay_ms = self.inject.type_delay_ms.clamp(0, 100);
+        self.inject.restore_delay_ms = self.inject.restore_delay_ms.clamp(50, 5000);
         if self.inject.focus_timeout_ms == 0 {
             self.inject.focus_timeout_ms = d.focus_timeout_ms;
         }

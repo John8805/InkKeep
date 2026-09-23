@@ -98,10 +98,12 @@ Month and year offsets follow the calendar and clamp to the last day of the mont
 
 | Type | Method |
 |---|---|
-| Snippets, bookmarks | Write to the clipboard, then `Ctrl+V`. The clipboard is not restored, so you can paste again |
+| Snippets, bookmarks | Write to the clipboard, then `Ctrl+V`; the previous clipboard text is restored afterwards |
 | Passwords, usernames | Typed character by character with `SendInput`, without the clipboard |
 
 Password entries are always typed, whether you send the username or the password. The clipboard is shared by the whole system, and background programs and clipboard history tools can read it, so credentials stay off it.
+
+The clipboard is restored 0.3 seconds after pasting, so the target app has time to read it first. If you copy something else in the meantime, InkKeep keeps your copy. If the clipboard held an image or files, it is empty after the restore.
 
 When snippets and bookmarks go through the clipboard, InkKeep sets three exclusion markers that keep them out of Windows clipboard history (`Win+V`) and cloud clipboard. Third-party clipboard managers can still see them.
 
@@ -155,6 +157,7 @@ Edit `[inject]` in `settings.toml`:
 focus_timeout_ms = 300      # How long to wait for focus to return to the target window
 paste_settle_ms = 30        # Wait after pasting before moving the cursor
 type_delay_ms = 2           # Delay between typed characters
+restore_delay_ms = 300      # Wait after pasting before restoring the clipboard
 virtual_input = false       # Type passwords with scan codes, like a physical keyboard
 ```
 

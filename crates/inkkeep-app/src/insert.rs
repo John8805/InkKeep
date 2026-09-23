@@ -125,16 +125,30 @@ pub fn run(
     }
 }
 
-/// 一般項目：寫剪貼簿、Ctrl+V、視需要移游標。
+/// 一般項目：寫剪貼簿、Ctrl+V、視需要移游標，再還原原本的剪貼簿文字。
 ///
-/// **送完不還原剪貼簿**，送出去的內容留在剪貼簿上，所以敏感項目不可走這條路。
+/// 送出去的內容會在剪貼簿上停留 `restore_delay_ms`，所以敏感項目不可走這條路。
 fn send_via_clipboard(rendered: &Rendered, settings: &InjectSettings) -> Result<(), WinError> {
-    clipboard::set_text(&rendered.text)?;
+    // 讀不到原本的內容（剪貼簿被別的程式佔著）就不還原
+    let before = clipboard::snapshot().ok();
+    let our_seq = clipboard::set_text(&rendered.text)?;
     input::send_paste()?;
 
     if rendered.cursor_from_end > 0 {
         std::thread::sleep(Duration::from_millis(settings.paste_settle_ms));
         input::send_arrow_left(rendered.cursor_from_end as u32)?;
+    }
+
+    // 目標程式收到 Ctrl+V 後才去讀剪貼簿，還原要等它讀完。在背景等，送出不必卡住。
+    // 這段期間使用者自己複製了東西，`restore` 會放棄還原。
+    if let Some(before) = before {
+        let delay = Duration::from_millis(settings.restore_delay_ms);
+        std::thread::spawn(move || {
+            std::thread::sleep(delay);
+            if let Err(e) = clipboard::restore(&before, our_seq) {
+                eprintln!("還原剪貼簿失敗：{e}");
+            }
+        });
     }
     Ok(())
 }
