@@ -332,13 +332,32 @@
     sel.addRange(range);
   }
 
-  /// 聚焦到搜尋框並全選，接著打字會取代整個搜尋條件
+  /// 聚焦到搜尋框：標籤方塊整理到最前面，只全選後面的文字。
+  /// 接著打字只取代文字，標籤留著；方塊本身不能被選取，全選整個框只會反白方塊間的空白
   async function focusSearch() {
     await tick();
     if (!searchBox) return;
+    const chips = [...searchBox.querySelectorAll(".chip")];
+    const text = [...searchBox.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.data)
+      .join(" ")
+      .replace(/[\s ]+/g, " ")
+      .trim();
+
+    // 沒有文字時不放空的文字節點：readField() 會把只剩空內容的框清空，節點被移除後游標就落空
+    const rest = text ? document.createTextNode(text) : null;
+    const nodes = chips.flatMap((chip) => [chip, document.createTextNode(" ")]);
+    searchBox.replaceChildren(...nodes, ...(rest ? [rest] : []));
+    readField();
     searchBox.focus();
+
     const range = document.createRange();
-    range.selectNodeContents(searchBox);
+    if (rest) range.selectNodeContents(rest);
+    else {
+      range.selectNodeContents(searchBox);
+      range.collapse(false);
+    }
     const sel = getSelection();
     sel.removeAllRanges();
     sel.addRange(range);

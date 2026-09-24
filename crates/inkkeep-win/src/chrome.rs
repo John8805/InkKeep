@@ -5,18 +5,22 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SendMessageW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, ICON_BIG,
-    ICON_SMALL, STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    WM_SETICON, WM_STYLECHANGING, WS_EX_DLGMODALFRAME,
+    ICON_SMALL, SC_KEYMENU, STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    WM_SETICON, WM_STYLECHANGING, WM_SYSCOMMAND, WS_EX_DLGMODALFRAME,
 };
 
 /// 子類別化用的識別碼，隨便挑一個不會跟別人撞的數字。
 const KEEP_FRAME_SUBCLASS: usize = 0x494B_4B50; // "IKKP"
 
-/// 每次視窗的延伸樣式要被改之前，都把 `WS_EX_DLGMODALFRAME` 補回去。
+/// 主視窗的子類別程序，處理兩件事：
 ///
-/// 只設一次不夠：Tauri 底下的 tao 自己記著一份視窗樣式，視窗每次顯示、
-/// 最大化、還原都會把整份重新套上去，我們另外加的旗標就被洗掉，
-/// 標題列又冒出 Windows 內建的通用程式圖示。
+/// - 每次視窗的延伸樣式要被改之前，都把 `WS_EX_DLGMODALFRAME` 補回去。
+///   只設一次不夠：Tauri 底下的 tao 自己記著一份視窗樣式，視窗每次顯示、
+///   最大化、還原都會把整份重新套上去，我們另外加的旗標就被洗掉，
+///   標題列又冒出 Windows 內建的通用程式圖示。
+/// - 擋掉「單獨按放 Alt」進入的選單模式。全域快捷鍵 `Alt+.` 把視窗叫到前景時
+///   Alt 還按著，放開後 Windows 就進入選單模式，接著按 ↓ 或 Enter 會打開系統選單。
+///   只擋 `lParam == 0`（單獨 Alt），`Alt+Space` 開系統選單照常可用。
 unsafe extern "system" fn keep_dialog_frame(
     hwnd: HWND,
     msg: u32,
@@ -30,6 +34,10 @@ unsafe extern "system" fn keep_dialog_frame(
         let styles = &mut *(lparam.0 as *mut STYLESTRUCT);
         styles.styleNew |= WS_EX_DLGMODALFRAME.0;
     }
+    // WM_SYSCOMMAND 的 wParam 低 4 位元是系統保留，比對前要遮掉
+    if msg == WM_SYSCOMMAND && (wparam.0 as u32 & 0xFFF0) == SC_KEYMENU && lparam.0 == 0 {
+        return LRESULT(0);
+    }
     DefSubclassProc(hwnd, msg, wparam, lparam)
 }
 
@@ -42,7 +50,8 @@ unsafe extern "system" fn keep_dialog_frame(
 /// 少了 `SWP_FRAMECHANGED` 那一步，樣式改了但畫面不會更新，要等到下一次
 /// 視窗大小變動才生效。
 ///
-/// 另外掛一個子類別程序（[`keep_dialog_frame`]），因為這個旗標會被 tao 洗掉。
+/// 另外掛一個子類別程序（[`keep_dialog_frame`]），因為這個旗標會被 tao 洗掉；
+/// 同一個程序也擋掉單獨按 Alt 進入的選單模式。
 pub fn hide_title_bar_icon(hwnd: isize) -> Result<(), WinError> {
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     // SAFETY: 呼叫時 hwnd 指向的視窗仍然存在
