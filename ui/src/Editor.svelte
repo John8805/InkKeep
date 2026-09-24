@@ -326,7 +326,7 @@
               <li><code>{"${date}"}</code> <code>{"${date:+7d}"}</code> <code>{"${date::long}"}</code></li>
               <li><code>{"${time}"}</code> <code>{"${datetime}"}</code></li>
               <li><code>{"${input:x}"}</code> <code>{"${select:x:a|b}"}</code></li>
-              <li><code>{"${clipboard}"}</code> <code>{"${cursor}"}</code> <code>{"${uuid}"}</code></li>
+              <li><code>{"${clipboard}"}</code> <code>{"${cursor}"}</code> <code>{"${uuid}"}</code> <code>{"${dollar}"}</code></li>
               <li><code>{"${snippet:title}"}</code></li>
             </ul>
           </details>

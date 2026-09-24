@@ -47,6 +47,16 @@ fn plain_text_passes_through() {
 }
 
 #[test]
+fn dollar_placeholder_puts_a_dollar_before_another_placeholder() {
+    let t = Template::parse("總計：${dollar}${input:金額}").unwrap();
+    let mut inputs = std::collections::BTreeMap::new();
+    inputs.insert("金額".to_string(), "1200".to_string());
+    let out = t.render(&ctx().with_inputs(inputs), &()).unwrap();
+    assert_eq!(out.text, "總計：$1200");
+    assert_eq!(parse_err("${dollar:x}"), "too-many-arguments");
+}
+
+#[test]
 fn escape_yields_literal_dollar_brace() {
     assert_eq!(render("$${date}"), "${date}");
     assert_eq!(render("a$${b}c"), "a${b}c");

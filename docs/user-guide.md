@@ -98,9 +98,10 @@ Only snippets are expanded.
 | `${input:label:default}` | With a default value | |
 | `${select:label:a\|b\|c}` | Drop-down choice | |
 | `${uuid}` | Random UUID v4 | |
+| `${dollar}` | A single `$`, for a `$` right before a placeholder | `${dollar}${input:amount}` → `$1200` |
 | `${snippet:other title}` | Insert another snippet, up to 5 levels deep | |
 
-`$${` produces a literal `${`. Put a backslash before `:` `|` `}` inside arguments.
+`$${` produces a literal `${`, so a `$` right before a placeholder can't be written as `$${input:amount}`; write `${dollar}${input:amount}` instead. Put a backslash before `:` `|` `}` inside arguments.
 
 Braces in snippets are kept as they are, for example `fn main() { }`; only `${` starts a placeholder.
 

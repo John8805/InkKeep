@@ -3,7 +3,7 @@
 //! ```text
 //! template   := (text | escape | placeholder)*
 //! escape     := "$${"                       -- 輸出字面 "${"
-//! placeholder:= "${" name (":" arg)* "}"
+//! placeholder:= "${" name (":" arg)* "}"     -- ${dollar} 輸出一個 "$"，用在 $ 緊接佔位符時
 //! name       := [a-z]+
 //! arg        := (argchar | argescape)*
 //! argchar    := 任何字元，除了 ":" "|" "}" "\"
@@ -17,7 +17,7 @@ fn arg_limit(name: &str) -> Option<usize> {
     Some(match name {
         "date" | "datetime" => 2,
         "time" => 1,
-        "clipboard" | "cursor" | "uuid" => 0,
+        "clipboard" | "cursor" | "uuid" | "dollar" => 0,
         "input" => 2,
         "select" => 2,
         "snippet" => 1,
@@ -220,6 +220,8 @@ fn build(name: &str, args: &[Vec<String>], _start: usize) -> Result<Node, String
         "clipboard" => Ok(Node::Clipboard),
         "cursor" => Ok(Node::Cursor),
         "uuid" => Ok(Node::Uuid),
+        // 「$」後面緊接佔位符時，寫成 $${ 會被當成跳脫，用 ${dollar} 代替那個 $
+        "dollar" => Ok(Node::Text("$".into())),
         "input" => {
             let label = args.first().map(|a| joined(a)).unwrap_or_default();
             let label = label.trim();
