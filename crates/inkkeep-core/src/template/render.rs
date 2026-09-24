@@ -149,7 +149,7 @@ impl Template {
                             default.clone()
                         }
                     });
-                    out.push_str(&value.ok_or_else(|| err("missing-input"))?);
+                    out.push_str(&value.ok_or_else(|| err("missing-input").with_detail(label))?);
                 }
                 Node::Select { label, options } => {
                     let value = ctx.inputs.get(label).cloned().or_else(|| {
@@ -159,16 +159,16 @@ impl Template {
                             None
                         }
                     });
-                    out.push_str(&value.ok_or_else(|| err("missing-input"))?);
+                    out.push_str(&value.ok_or_else(|| err("missing-input").with_detail(label))?);
                 }
                 Node::Snippet { title } => {
                     let key = title.to_lowercase();
                     if stack.contains(&key) {
-                        return Err(err("reference-cycle"));
+                        return Err(err("reference-cycle").with_detail(title));
                     }
                     let body = resolver
                         .resolve(title)
-                        .ok_or_else(|| err("reference-not-found"))?;
+                        .ok_or_else(|| err("reference-not-found").with_detail(title))?;
                     let inner = Template::parse(&body)?;
                     stack.push(key);
                     inner.render_into(ctx, resolver, out, cursor_at, stack, depth + 1)?;
@@ -181,10 +181,7 @@ impl Template {
 }
 
 fn err(message: &str) -> TemplateError {
-    TemplateError {
-        offset: 0,
-        message: message.to_string(),
-    }
+    TemplateError::new(0, message)
 }
 
 /// 月／年偏移用日曆語意，溢位截斷到當月最後一天。

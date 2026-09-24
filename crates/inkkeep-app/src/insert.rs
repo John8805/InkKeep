@@ -82,7 +82,6 @@ pub fn run(
     id: Uuid,
     field: SendField,
     inputs: BTreeMap<String, String>,
-    alternate_method: bool,
 ) -> Result<(), AppError> {
     let settings = InjectSettings::load(app);
     let sensitive = state
@@ -98,19 +97,19 @@ pub fn run(
     }
 
     let Some(token) = state.take_target() else {
-        // 沒有記錄到目標視窗：不猜。一般項目放進剪貼簿，敏感項目不放
-        return Err(fail(&rendered.text, WinError::Other("no-target".into()), sensitive));
+        // 沒有記錄到目標視窗：不猜
+        return Err(fail(WinError::Other("no-target".into())));
     };
 
     if let Err(e) = focus::check_target(&token) {
-        return Err(fail(&rendered.text, e, sensitive));
+        return Err(fail(e));
     }
     if let Err(e) = focus::restore_focus(&token, Duration::from_millis(settings.focus_timeout_ms)) {
-        return Err(fail(&rendered.text, e, sensitive));
+        return Err(fail(e));
     }
 
     let outcome = if sensitive {
-        send_directly(&rendered, &token, &settings, alternate_method)
+        send_directly(&rendered, &token, &settings)
     } else {
         send_via_clipboard(&rendered, &settings)
     };
@@ -121,7 +120,7 @@ pub fn run(
             let _ = app.emit("insert:done", id.to_string());
             Ok(())
         }
-        Err(e) => Err(fail(&rendered.text, e, sensitive)),
+        Err(e) => Err(fail(e)),
     }
 }
 
@@ -132,13 +131,15 @@ fn send_via_clipboard(rendered: &Rendered, settings: &InjectSettings) -> Result<
     // 讀不到原本的內容（剪貼簿被別的程式佔著）就不還原
     let before = clipboard::snapshot().ok();
     let our_seq = clipboard::set_text(&rendered.text)?;
-    input::send_paste()?;
+    let sent = input::send_paste().and_then(|()| {
+        if rendered.cursor_from_end > 0 {
+            std::thread::sleep(Duration::from_millis(settings.paste_settle_ms));
+            input::send_arrow_left(rendered.cursor_from_end as u32)?;
+        }
+        Ok(())
+    });
 
-    if rendered.cursor_from_end > 0 {
-        std::thread::sleep(Duration::from_millis(settings.paste_settle_ms));
-        input::send_arrow_left(rendered.cursor_from_end as u32)?;
-    }
-
+    // 送出成功或失敗都還原，失敗時內容不留在剪貼簿。
     // 目標程式收到 Ctrl+V 後才去讀剪貼簿，還原要等它讀完。在背景等，送出不必卡住。
     // 這段期間使用者自己複製了東西，`restore` 會放棄還原。
     if let Some(before) = before {
@@ -150,7 +151,7 @@ fn send_via_clipboard(rendered: &Rendered, settings: &InjectSettings) -> Result<
             }
         });
     }
-    Ok(())
+    sent
 }
 
 /// 敏感項目：逐字輸入，完全不碰剪貼簿。
@@ -158,11 +159,11 @@ fn send_directly(
     rendered: &Rendered,
     token: &inkkeep_win::FocusToken,
     settings: &InjectSettings,
-    alternate_method: bool,
 ) -> Result<(), WinError> {
-    let method = match (settings.virtual_input, alternate_method) {
-        (false, false) | (true, true) => InputMethod::Unicode,
-        (true, false) | (false, true) => InputMethod::Virtual,
+    let method = if settings.virtual_input {
+        InputMethod::Virtual
+    } else {
+        InputMethod::Unicode
     };
     input::send_text(
         &rendered.text,
@@ -176,15 +177,9 @@ fn send_directly(
     Ok(())
 }
 
-/// 送出失敗時把一般項目的內容寫進剪貼簿；敏感項目不寫。
-fn fail(text: &str, error: WinError, sensitive: bool) -> AppError {
-    let on_clipboard = if sensitive {
-        false
-    } else {
-        clipboard::set_text(text).is_ok()
-    };
+/// 送出失敗。內容不寫進剪貼簿。
+fn fail(error: WinError) -> AppError {
     AppError::SendFailed {
         reason: error.to_string(),
-        clipboard: on_clipboard,
     }
 }

@@ -2,7 +2,7 @@
   // 建立/編輯 modal。建立與編輯共用同一個表單，靠有沒有 id 區分。
   import { tick } from "svelte";
   import * as api from "./api.js";
-  import { t } from "./i18n.svelte.js";
+  import { t, describeTemplateError } from "./i18n.svelte.js";
   import SecretPrompt from "./SecretPrompt.svelte";
 
   let {
@@ -10,6 +10,7 @@
     initialTitle = "",
     initialKind = "snippet",
     initialWorkspace = "",
+    initialTags = [],
     onsaved,
     oncancel,
   } = $props();
@@ -19,12 +20,15 @@
   let body = $state("");
   let username = $state("");
   let url = $state("");
-  let tagText = $state("");
+  let tagText = $state(initialTags.join(", "));
   let workspaces = $state([]);
   let workspace = $state(initialWorkspace);
   let loading = $state(id !== null);
   let error = $state(null);
+  /// 模板文法錯誤，擋存檔
   let templateIssues = $state([]);
+  /// 引用的片語找不到、循環引用等，只提醒不擋存檔
+  let templateWarnings = $state([]);
   let showPassword = $state(false);
   let entropy = $state(null);
   /// 這一筆已經有密碼。body 留空表示沿用原密碼。
@@ -80,12 +84,28 @@
   function onBodyInput() {
     if (kind !== "snippet") {
       templateIssues = [];
+      templateWarnings = [];
       return;
     }
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
-      templateIssues = await api.templateValidate(body);
+      const check = await api.templateValidate(body);
+      templateIssues = check.errors;
+      templateWarnings = check.warnings;
     }, 300);
+  }
+
+  /// 後端的 offset 是 UTF-8 位元組位置，轉成從 1 起算的字數
+  function charPosition(text, byteOffset) {
+    const encoder = new TextEncoder();
+    let bytes = 0;
+    let pos = 0;
+    for (const ch of text) {
+      if (bytes >= byteOffset) break;
+      bytes += encoder.encode(ch).length;
+      pos += 1;
+    }
+    return pos + 1;
   }
 
   $effect(() => {
@@ -284,8 +304,14 @@
           </label>
           {#each templateIssues as issue}
             <p class="error" role="alert">
-              {t("editor.templateError", { offset: issue.offset, message: issue.message })}
+              {t("editor.templateError", {
+                message: describeTemplateError(issue),
+                where: t("editor.templateAt", { pos: charPosition(body, issue.offset) }),
+              })}
             </p>
+          {/each}
+          {#each templateWarnings as warning}
+            <p class="warn" role="status">{describeTemplateError(warning)}</p>
           {/each}
           <details>
             <summary class="muted">{t("editor.placeholders")}</summary>
@@ -430,6 +456,11 @@
 
   .error {
     color: var(--danger);
+    margin: 0;
+    font-size: 0.85em;
+  }
+  .warn {
+    color: #e0a34a;
     margin: 0;
     font-size: 0.85em;
   }

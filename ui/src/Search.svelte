@@ -3,6 +3,7 @@
   import { onMount, tick } from "svelte";
   import * as api from "./api.js";
   import { t } from "./i18n.svelte.js";
+  import { createMatcher, labelOf } from "./shortcuts.svelte.js";
   import InputForm from "./InputForm.svelte";
   import SecretPrompt from "./SecretPrompt.svelte";
   import FieldChoice from "./FieldChoice.svelte";
@@ -16,6 +17,15 @@
   let showSettings = $state(false);
 
   let query = $state("");
+  /// 搜尋框裡的標籤方塊，每個都要符合。跟 query 一樣從搜尋框的內容讀出來
+  let tags = $state([]);
+  /// 保險庫裡所有標籤與筆數，給 # 選單用
+  let allTags = $state([]);
+  /// 打 # 時的標籤選單：{ node, start, end, items, index }。
+  /// node 是游標所在的文字節點，start..end 是「#片段」在裡面的位置
+  let suggest = $state(null);
+  /// 按 Esc 關掉選單後，直到內容再變動前不重開
+  let suggestDismissed = false;
   /// 永遠有一個類別被選中，沒有「全部」
   let kindFilter = $state("snippet");
   const KIND_FILTERS = ["snippet", "bookmark", "password"];
@@ -28,16 +38,21 @@
   let cursor = $state(0);
   let toast = $state(null);
   let previewText = $state("");
+  /// 預覽展開失敗時的錯誤訊息，顯示在預覽區
+  let previewError = $state(null);
   /// 密碼項目的預覽：帳號與網域（都沒加密），密碼本身只顯示遮罩
   let previewPw = $state(null);
   /// 非 null 時畫面切換成表單模式（原地切換，不開 modal）
   let pendingForm = $state(null);
   /// 非 null 時原地切換成主密碼提示。{ reason, retry }
   let secretPrompt = $state(null);
-  /// 非 null 時原地問要送帳號還是密碼。{ item, alternate }
+  /// 非 null 時原地問要送帳號還是密碼。{ item }
   let fieldChoice = $state(null);
 
+  /// 搜尋框：可編輯區塊，文字與標籤方塊在同一行，游標可以停在任何位置
   let searchBox;
+  /// 搜尋框是空的（沒有文字也沒有標籤）時顯示提示字
+  let fieldEmpty = $state(true);
   let listEl;
   let bodyEl;
   let debounceTimer;
@@ -66,7 +81,7 @@
 
   async function runSearch() {
     try {
-      hits = await api.search(query, 200, kindFilter, wsFilter || null);
+      hits = await api.search(query, tags, 200, kindFilter, wsFilter || null);
       cursor = 0;
     } catch (e) {
       toast = api.describeError(e);
@@ -76,8 +91,8 @@
   async function pickKind(kind) {
     kindFilter = kind;
     await runSearch();
-    // 換完類別焦點要回到輸入框，不然接著打字會沒反應
-    await focusSearch();
+    // 換完類別焦點要回到搜尋框，不然接著打字會沒反應
+    await focusEnd();
   }
 
   function cycleKind(delta) {
@@ -90,6 +105,12 @@
     try {
       workspaces = await api.workspaceList();
       if (wsFilter && !workspaces.some((w) => w.id === wsFilter)) wsFilter = "";
+      allTags = await api.tagList();
+      // 標籤被刪光的就從搜尋條件拿掉
+      for (const chip of searchBox?.querySelectorAll(".chip") ?? []) {
+        if (!allTags.some((x) => x.name === chip.dataset.tag)) chip.remove();
+      }
+      readField();
     } catch (e) {
       toast = api.describeError(e);
     }
@@ -98,17 +119,174 @@
   async function pickWorkspace(id) {
     wsFilter = id;
     await runSearch();
-    await focusSearch();
+    await focusEnd();
+  }
+
+  /// 依下拉選單的順序循環：全部 → 各工作區
+  function cycleWorkspace(delta) {
+    const ids = ["", ...workspaces.map((w) => w.id)];
+    const at = Math.max(ids.indexOf(wsFilter), 0);
+    pickWorkspace(ids[(at + delta + ids.length) % ids.length]);
+  }
+
+  /// 從搜尋框的 DOM 讀出文字與標籤。標籤方塊在文字裡算一個空白，兩邊的字不會黏在一起
+  function readField() {
+    let text = "";
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) text += child.data;
+        else if (child.classList?.contains("chip")) {
+          found.push(child.dataset.tag);
+          text += " ";
+        } else if (child.nodeName === "BR") text += " ";
+        else walk(child);
+      }
+    };
+    if (searchBox) walk(searchBox);
+    // 可編輯區塊會把連續空白存成 &nbsp;
+    query = text.replace(/\u00a0/g, " ");
+    tags = [...new Set(found)];
+    fieldEmpty = query.trim() === "" && tags.length === 0;
+    // 清空後瀏覽器可能留下 <br>，會把搜尋框撐成兩行
+    if (fieldEmpty && searchBox && searchBox.childNodes.length > 0 && query === "") {
+      searchBox.replaceChildren();
+    }
   }
 
   function onInput() {
+    readField();
+    suggestDismissed = false;
+    updateSuggest();
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runSearch, 30);
+  }
+
+  /// 游標前面是「#片段」就開標籤選單，列出名稱含這個片段的標籤，開頭相符的排前面
+  function updateSuggest() {
+    const sel = getSelection();
+    const node = sel?.anchorNode;
+    if (
+      suggestDismissed ||
+      !sel?.isCollapsed ||
+      node?.nodeType !== Node.TEXT_NODE ||
+      !searchBox?.contains(node)
+    ) {
+      suggest = null;
+      return;
+    }
+    const caret = sel.anchorOffset;
+    const m = node.data.slice(0, caret).match(/(^|[\s\u00a0])#([^\s\u00a0#]*)$/);
+    if (!m) {
+      suggest = null;
+      return;
+    }
+    const frag = m[2].toLowerCase();
+    const starts = (tag) => (tag.name.toLowerCase().startsWith(frag) ? 0 : 1);
+    const items = allTags
+      .filter((tag) => !tags.includes(tag.name) && tag.name.toLowerCase().includes(frag))
+      .sort((a, b) => starts(a) - starts(b) || b.count - a.count)
+      .slice(0, 8);
+    suggest = items.length
+      ? { node, start: caret - m[2].length - 1, end: caret, items, index: 0 }
+      : null;
+  }
+
+  /// 標籤方塊：不能編輯，游標把它當成一個字跳過，Backspace／Delete 會整個刪掉
+  function makeChip(name) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.contentEditable = "false";
+    chip.dataset.tag = name;
+    chip.textContent = `#${name}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "chip-x";
+    remove.tabIndex = -1;
+    remove.textContent = "×";
+    remove.title = t("search.removeTag", { tag: name });
+    remove.setAttribute("aria-label", remove.title);
+    chip.append(remove);
+    return chip;
+  }
+
+  /// 把「#片段」換成標籤方塊，後面補一個空白並把游標放在空白後
+  function pickTag(name) {
+    if (!suggest) return;
+    const { node, start, end } = suggest;
+    const rest = node.splitText(start);
+    rest.data = rest.data.slice(end - start);
+    if (!/^[\s\u00a0]/.test(rest.data)) rest.data = "\u00a0" + rest.data;
+    rest.parentNode.insertBefore(makeChip(name), rest);
+    suggest = null;
+    placeCaret(rest, 1);
+    onInput();
+  }
+
+  function placeCaret(node, offset) {
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.collapse(true);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /// 按方塊上的 × 刪掉那個標籤
+  function onFieldClick(e) {
+    const chip = e.target.closest?.(".chip-x")?.parentElement;
+    if (chip) {
+      e.preventDefault();
+      chip.remove();
+      searchBox.focus();
+      onInput();
+      return;
+    }
+    updateSuggest();
+  }
+
+  /// 搜尋框本身的按鍵：不讓 Enter 換行
+  function onFieldKeydown(e) {
+    if (e.key === "Enter") e.preventDefault();
+  }
+
+  /// 貼上時只收純文字，換行換成空白
+  function onFieldPaste(e) {
+    e.preventDefault();
+    const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\s+/g, " ");
+    document.execCommand("insertText", false, text);
+  }
+
+  /// 標籤選單開著時，方向鍵、Enter、Tab、Esc 給選單用。回傳 true 表示已處理
+  function suggestKeydown(e) {
+    if (!suggest || e.isComposing) return false;
+    const n = suggest.items.length;
+    switch (e.key) {
+      case "ArrowDown":
+        suggest.index = (suggest.index + 1) % n;
+        break;
+      case "ArrowUp":
+        suggest.index = (suggest.index - 1 + n) % n;
+        break;
+      case "Enter":
+      case "Tab":
+        pickTag(suggest.items[suggest.index].name);
+        break;
+      case "Escape":
+        suggest = null;
+        suggestDismissed = true;
+        break;
+      default:
+        return false;
+    }
+    e.preventDefault();
+    return true;
   }
 
   $effect(() => {
     const item = selected;
     previewPw = null;
+    previewError = null;
     if (!item) {
       previewText = "";
       return;
@@ -131,18 +309,39 @@
       .then((text) => {
         if (!cancelled) previewText = text;
       })
-      .catch(() => {
-        if (!cancelled) previewText = "";
+      .catch((e) => {
+        if (cancelled) return;
+        previewText = "";
+        previewError = api.describeError(e);
       });
     return () => {
       cancelled = true;
     };
   });
 
+  /// 聚焦到搜尋框，游標放在最後面，已經打的字和標籤都留著
+  async function focusEnd() {
+    await tick();
+    if (!searchBox) return;
+    searchBox.focus();
+    const range = document.createRange();
+    range.selectNodeContents(searchBox);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /// 聚焦到搜尋框並全選，接著打字會取代整個搜尋條件
   async function focusSearch() {
     await tick();
-    searchBox?.focus();
-    searchBox?.select();
+    if (!searchBox) return;
+    searchBox.focus();
+    const range = document.createRange();
+    range.selectNodeContents(searchBox);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   onMount(async () => {
@@ -202,46 +401,43 @@
   }
 
   /// 密碼項目先問送哪個欄位，需要輸入就切表單，否則直接送出
-  async function activate(field = "body", alternate = false) {
+  async function activate(field = "body") {
     if (!selected) return;
     const item = selected;
 
-    // alternate 是換輸入法的逃生口，跳過欄位選擇直接送密碼。
-    if (item.kind === "password" && field === "body" && item.has_username && !alternate) {
-      fieldChoice = { item, alternate };
+    if (item.kind === "password" && field === "body" && item.has_username) {
+      fieldChoice = { item };
       return;
     }
-    await sendField(item, field, alternate);
+    await sendField(item, field);
   }
 
   /// 送出指定欄位。密碼要主密碼，帳號不用——帳號沒有加密。
-  async function sendField(item, field, alternate) {
+  async function sendField(item, field) {
     try {
       if (item.kind === "password" && field === "body") {
-        await withSecret(t("secret.send", { title: item.title }), () =>
-          doActivate(item, field, alternate),
-        );
+        await withSecret(t("secret.send", { title: item.title }), () => doActivate(item, field));
       } else {
-        await doActivate(item, field, alternate);
+        await doActivate(item, field);
       }
     } catch (e) {
       toast = api.describeError(e);
     }
   }
 
-  async function doActivate(item, field, alternate) {
+  async function doActivate(item, field) {
     const plan = await api.prepareInsert(item.id);
     if (plan.needs_inputs.length > 0) {
-      pendingForm = { item, plan, field, alternate };
+      pendingForm = { item, plan, field };
       return;
     }
-    await api.insert(item.id, field, {}, alternate);
+    await api.insert(item.id, field, {});
     pendingForm = null;
   }
 
-  async function send(id, field, inputs, alternate) {
+  async function send(id, field, inputs) {
     try {
-      await api.insert(id, field, inputs, alternate);
+      await api.insert(id, field, inputs);
       pendingForm = null;
     } catch (e) {
       toast = api.describeError(e);
@@ -273,67 +469,114 @@
     }
   }
 
-  function onKeydown(e) {
-    if (pendingForm || secretPrompt || fieldChoice || editor || showSettings) return;
+  const keys = createMatcher();
 
-    const ctrl = e.ctrlKey || e.metaKey;
-    switch (e.key) {
-      // Tab 換類別，取代焦點巡覽；← → 留給搜尋框移動游標。
-      case "Tab":
-        e.preventDefault();
-        cycleKind(e.shiftKey ? -1 : 1);
+  /// 表單、主密碼提示、欄位選擇、編輯、設定開著時，按鍵交給它們自己處理
+  const keysBlocked = () => pendingForm || secretPrompt || fieldChoice || editor || showSettings;
+
+  /// 依設定的快捷鍵分派。沒對應到動作的按鍵照常交給輸入框（打字、← → 移動游標）。
+  function onKeydown(e) {
+    if (keysBlocked()) {
+      keys.reset();
+      return;
+    }
+    if (suggestKeydown(e)) {
+      keys.reset();
+      return;
+    }
+    const { action, prevent } = keys.keydown(e);
+    if (prevent) e.preventDefault();
+    if (action) runAction(action);
+  }
+
+  function onKeyup(e) {
+    if (keysBlocked()) return;
+    const action = keys.keyup(e);
+    if (action) runAction(action);
+  }
+
+  function runAction(action) {
+    switch (action) {
+      case "send":
+        activate("body");
         break;
-      case "ArrowDown":
-        e.preventDefault();
+      case "copy":
+        copy();
+        break;
+      case "openBookmark":
+        openBookmark();
+        break;
+      case "kindNext":
+        cycleKind(1);
+        break;
+      case "kindPrev":
+        cycleKind(-1);
+        break;
+      case "workspaceNext":
+        cycleWorkspace(1);
+        break;
+      case "workspacePrev":
+        cycleWorkspace(-1);
+        break;
+      case "selectDown":
         move(1);
         break;
-      case "ArrowUp":
-        e.preventDefault();
+      case "selectUp":
         move(-1);
         break;
-      case "PageDown":
-        e.preventDefault();
+      case "pageDown":
         move(10, false);
         break;
-      case "PageUp":
-        e.preventDefault();
+      case "pageUp":
         move(-10, false);
         break;
-      case "Enter":
-        e.preventDefault();
-        if (ctrl && e.shiftKey) activate("body", true);
-        else if (e.shiftKey) copy();
-        else activate("body");
+      case "newItem":
+        openNew();
         break;
-      case "Escape":
-        e.preventDefault();
+      case "editItem":
+        if (selected) editor = { id: selected.id };
+        break;
+      case "settings":
+        showSettings = true;
+        break;
+      case "lock":
+        api.lock().then(() => onvaultchanged?.());
+        break;
+      case "close":
         api.hideWindow();
         break;
-      case "l":
-        if (ctrl) {
-          e.preventDefault();
-          api.lock().then(() => onvaultchanged?.());
-        }
-        break;
-      case "e":
-        if (ctrl && selected) {
-          e.preventDefault();
-          editor = { id: selected.id };
-        }
-        break;
-      case "n":
-        if (ctrl) {
-          e.preventDefault();
-          editor = { id: null, title: query, kind: kindFilter, workspace: wsFilter };
-        }
-        break;
-      case ",":
-        if (ctrl) {
-          e.preventDefault();
-          showSettings = true;
-        }
-        break;
     }
+  }
+
+  /// 用預設瀏覽器開啟選中的書籤；選中的不是書籤就提示
+  async function openBookmark() {
+    if (!selected) return;
+    if (selected.kind !== "bookmark") {
+      toast = t("search.onlyBookmarks");
+      return;
+    }
+    try {
+      await api.openBookmark(selected.id);
+    } catch (e) {
+      toast = api.describeError(e);
+    }
+  }
+
+  /// 新增：搜尋框的文字當標題、標籤方塊當標籤，類別與工作區沿用搜尋畫面當下的
+  function openNew() {
+    editor = {
+      id: null,
+      title: query.replace(/\s+/g, " ").trim(),
+      kind: kindFilter,
+      workspace: wsFilter,
+      tags: [...tags],
+    };
+  }
+
+  /// 按鈕提示文字後面附上目前的快捷鍵，沒指定就只有文字
+  function withKey(text, action) {
+    const key = labelOf(action);
+    return key ? `${text} (${key})` : text;
   }
 </script>
 
@@ -359,7 +602,13 @@
   <dd>{value}</dd>
 {/snippet}
 
-<svelte:window onkeydown={onKeydown} onmousemove={onSplitMove} onmouseup={endSplit} />
+<svelte:window
+  onkeydown={onKeydown}
+  onkeyup={onKeyup}
+  onblur={() => keys.reset()}
+  onmousemove={onSplitMove}
+  onmouseup={endSplit}
+/>
 
 <div class="wrap">
   {#if vault.conflict_files?.length > 0}
@@ -374,21 +623,52 @@
       value={wsFilter}
       onchange={(e) => pickWorkspace(e.currentTarget.value)}
       aria-label={t("search.workspace")}
+      title={withKey(t("search.workspace"), "workspaceNext")}
     >
       <option value="">{t("search.allWorkspaces")}</option>
       {#each workspaces as w (w.id)}
         <option value={w.id}>{w.name}</option>
       {/each}
     </select>
-    <input
-      bind:this={searchBox}
-      bind:value={query}
-      oninput={onInput}
-      placeholder={t("search.placeholder")}
-      aria-label={t("search.placeholder")}
-      spellcheck="false"
-      autocomplete="off"
-    />
+    <!-- 標籤選單以這層定位 -->
+    <div class="searchfield">
+      <!-- 內容由 DOM 直接管理（打字、標籤方塊），Svelte 不重畫它；讀值走 readField() -->
+      {#if fieldEmpty}
+        <span class="placeholder" aria-hidden="true">{t("search.placeholder")}</span>
+      {/if}
+      <div
+        class="field"
+        bind:this={searchBox}
+        contenteditable="true"
+        role="searchbox"
+        tabindex="0"
+        spellcheck="false"
+        aria-label={t("search.placeholder")}
+        oninput={onInput}
+        onclick={onFieldClick}
+        onkeydown={onFieldKeydown}
+        onpaste={onFieldPaste}
+        onkeyup={(e) => ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key) && updateSuggest()}
+        onblur={() => (suggest = null)}
+      ></div>
+      {#if suggest}
+        <ul class="suggest" role="listbox" aria-label={t("search.tagSuggest")}>
+          {#each suggest.items as item, i (item.name)}
+            <!-- mousedown 不搶焦點，輸入框的游標位置還在 -->
+            <li
+              role="option"
+              aria-selected={i === suggest.index}
+              class:sel={i === suggest.index}
+              onmousedown={(e) => e.preventDefault()}
+              onclick={() => pickTag(item.name)}
+            >
+              <span>#{item.name}</span>
+              <span class="muted small">{item.count}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
     <div class="kinds" role="tablist" aria-label={t("kind.snippet")}>
       {#each KIND_FILTERS as kind (kind)}
         <button
@@ -408,9 +688,9 @@
     <FieldChoice
       item={fieldChoice.item}
       onpick={async (field) => {
-        const { item, alternate } = fieldChoice;
+        const { item } = fieldChoice;
         fieldChoice = null;
-        await sendField(item, field, alternate);
+        await sendField(item, field);
       }}
       oncancel={() => {
         fieldChoice = null;
@@ -431,7 +711,7 @@
       item={pendingForm.item}
       plan={pendingForm.plan}
       onsubmit={(inputs) =>
-        send(pendingForm.item.id, pendingForm.field, inputs, pendingForm.alternate)}
+        send(pendingForm.item.id, pendingForm.field, inputs)}
       oncancel={() => {
         pendingForm = null;
         focusSearch();
@@ -469,7 +749,7 @@
               <button
                 class="act"
                 aria-label={t("search.copyAction")}
-                title={t("search.copyHint")}
+                title={withKey(t("search.copyAction"), "copy")}
                 onclick={(e) => {
                   e.stopPropagation();
                   copy(hit);
@@ -482,7 +762,7 @@
             <button
               class="act"
               aria-label={t("editor.edit")}
-              title={t("editor.editHint")}
+              title={withKey(t("editor.edit"), "editItem")}
               onclick={(e) => {
                 e.stopPropagation();
                 editor = { id: hit.id };
@@ -525,6 +805,9 @@
               </dl>
             {/if}
           {:else}
+            {#if previewError}
+              <p class="preview-error">{previewError}</p>
+            {/if}
             <pre>{previewText}</pre>
           {/if}
         {/if}
@@ -549,9 +832,9 @@
     </button>
     <button
       class="fab primary"
-      onclick={() => (editor = { id: null, title: query, kind: kindFilter, workspace: wsFilter })}
+      onclick={openNew}
       aria-label={t("search.add")}
-      title="{t('search.add')} (Ctrl+N)"
+      title={withKey(t("search.add"), "newItem")}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
@@ -560,10 +843,12 @@
   </div>
 
   <footer class="muted">
-    <span>{t("search.hintSend")}</span>
-    <span>{t("search.hintCopy")}</span>
-    <span>{t("search.hintFilter")}</span>
-    <span>{t("search.hintClose")}</span>
+    {#each [["send", "search.hintSend"], ["copy", "search.hintCopy"], ["openBookmark", "search.hintOpen"], ["kindNext", "search.hintFilter"], ["workspaceNext", "search.hintWorkspace"], ["close", "search.hintClose"]] as [action, text] (action)}
+      <!-- 「開啟」只對書籤有用，在書籤類別才顯示 -->
+      {#if labelOf(action) && (action !== "openBookmark" || kindFilter === "bookmark")}
+        <span>{labelOf(action)} {t(text)}</span>
+      {/if}
+    {/each}
   </footer>
 
   {#if editor}
@@ -572,8 +857,11 @@
       initialTitle={editor.title ?? ""}
       initialKind={editor.kind ?? "snippet"}
       initialWorkspace={editor.workspace ?? ""}
+      initialTags={editor.tags ?? []}
       onsaved={async () => {
         editor = null;
+        // 可能新增或刪掉了標籤，# 選單要跟著更新
+        await loadWorkspaces();
         await runSearch();
         await onvaultchanged?.();
         focusSearch();
@@ -640,11 +928,94 @@
     border-radius: 999px;
   }
 
-  .searchbar input {
-    /* 全域的 input 是 width:100%，在 flex 列裡會把類別鈕擠掉 */
+  .searchfield {
+    position: relative;
     flex: 1;
     min-width: 0;
-    width: auto;
+  }
+  /* 固定成一行高，跟一般輸入框一樣 38px；太長時水平捲動、不顯示捲軸 */
+  .field {
+    height: 38px;
+    padding: 8px 10px;
+    line-height: 20px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    cursor: text;
+  }
+  .field::-webkit-scrollbar {
+    display: none;
+  }
+  .placeholder {
+    position: absolute;
+    left: 11px;
+    top: 9px;
+    line-height: 20px;
+    color: var(--fg-dim);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .field:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  /* 標籤方塊是 DOM 直接建立的，不帶 Svelte 的 scoped class，要用 :global */
+  .field :global(.chip) {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin: 0 2px;
+    padding: 1px 2px 1px 8px;
+    border-radius: 999px;
+    background: var(--bg-sel);
+    font-size: 0.85em;
+    line-height: 18px;
+    vertical-align: 1px;
+    user-select: none;
+  }
+  .field :global(.chip-x) {
+    padding: 0 4px;
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.7;
+    cursor: default;
+  }
+  .field :global(.chip-x:hover) {
+    opacity: 1;
+  }
+  .suggest {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 20;
+    min-width: 12em;
+    max-width: 100%;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+  .suggest li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: default;
+  }
+  .suggest li.sel {
+    background: var(--bg-sel);
+  }
+  .suggest .small {
+    font-size: 0.8em;
   }
 
   .kinds {
@@ -814,6 +1185,11 @@
     font-family: "Cascadia Code", Consolas, monospace;
   }
 
+  .preview-error {
+    margin: 0 0 8px;
+    color: var(--danger);
+    font-size: 0.85em;
+  }
   .preview pre {
     margin: 0;
     white-space: pre-wrap;

@@ -19,7 +19,7 @@ use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 use tauri_plugin_notification::NotificationExt;
 
 fn main() {
@@ -51,6 +51,7 @@ fn main() {
             commands::preview,
             commands::insert,
             commands::copy_only,
+            commands::open_bookmark,
             commands::generate_password,
             commands::entropy_bits,
             commands::hide_window,
@@ -140,96 +141,48 @@ fn setup_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 註冊全域快捷鍵。解析或註冊失敗時記進 `AppState::hotkey_conflict`，
-/// 並發 `hotkey:conflict` 事件。
+/// 啟動時註冊全域快捷鍵。失敗時發 `hotkey:conflict` 事件。
 fn register_hotkey(app: &AppHandle, combo: &str) {
-    let report_conflict = || {
-        if let Some(state) = app.try_state::<AppState>() {
-            state.set_hotkey_conflict(Some(combo.to_string()));
-        }
+    if apply_hotkey(app, combo).is_err() {
         let _ = app.emit("hotkey:conflict", combo.to_string());
-    };
-    let Some(shortcut) = parse_shortcut(combo) else {
-        report_conflict();
-        return;
-    };
-
-    let handle = app.clone();
-    let result = app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_, _, ev| {
-            if ev.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                return;
-            }
-            reveal_window(&handle);
-        });
-
-    if result.is_err() {
-        report_conflict();
     }
 }
 
-/// 解析 `Alt+Period` 這種字串。
-fn parse_shortcut(combo: &str) -> Option<Shortcut> {
-    let mut modifiers = Modifiers::empty();
-    let mut code: Option<Code> = None;
-
-    for part in combo.split('+') {
-        match part.trim().to_ascii_lowercase().as_str() {
-            "alt" => modifiers |= Modifiers::ALT,
-            "ctrl" | "control" | "cmdorctrl" | "commandorcontrol" => {
-                modifiers |= Modifiers::CONTROL
-            }
-            "shift" => modifiers |= Modifiers::SHIFT,
-            "super" | "win" | "meta" => modifiers |= Modifiers::SUPER,
-            key => code = parse_code(key),
-        }
+/// 換成新的全域快捷鍵：先取消所有已註冊的，再註冊 `combo`。
+/// 結果記進 `AppState::hotkey_conflict`：成功清掉，失敗記下這組字串。
+pub(crate) fn apply_hotkey(app: &AppHandle, combo: &str) -> Result<(), String> {
+    let result = parse_shortcut(combo).and_then(|shortcut| {
+        let _ = app.global_shortcut().unregister_all();
+        let handle = app.clone();
+        app.global_shortcut()
+            .on_shortcut(shortcut, move |_, _, ev| {
+                if ev.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
+                reveal_window(&handle);
+            })
+            .map_err(|e| e.to_string())
+    });
+    if let Some(state) = app.try_state::<AppState>() {
+        state.set_hotkey_conflict(result.is_err().then(|| combo.to_string()));
     }
-    code.map(|c| Shortcut::new(Some(modifiers), c))
+    result
 }
 
-fn parse_code(key: &str) -> Option<Code> {
-    Some(match key {
-        "period" | "." => Code::Period,
-        "comma" | "," => Code::Comma,
-        "space" => Code::Space,
-        "slash" | "/" => Code::Slash,
-        "semicolon" | ";" => Code::Semicolon,
-        "backquote" | "`" => Code::Backquote,
-        s if s.len() == 1 && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) => {
-            let upper = s.to_ascii_uppercase();
-            match upper.as_str() {
-                "A" => Code::KeyA,
-                "B" => Code::KeyB,
-                "C" => Code::KeyC,
-                "D" => Code::KeyD,
-                "E" => Code::KeyE,
-                "F" => Code::KeyF,
-                "G" => Code::KeyG,
-                "H" => Code::KeyH,
-                "I" => Code::KeyI,
-                "J" => Code::KeyJ,
-                "K" => Code::KeyK,
-                "L" => Code::KeyL,
-                "M" => Code::KeyM,
-                "N" => Code::KeyN,
-                "O" => Code::KeyO,
-                "P" => Code::KeyP,
-                "Q" => Code::KeyQ,
-                "R" => Code::KeyR,
-                "S" => Code::KeyS,
-                "T" => Code::KeyT,
-                "U" => Code::KeyU,
-                "V" => Code::KeyV,
-                "W" => Code::KeyW,
-                "X" => Code::KeyX,
-                "Y" => Code::KeyY,
-                "Z" => Code::KeyZ,
-                _ => return None,
-            }
-        }
-        _ => return None,
-    })
+/// 解析 `Alt+Period`、`Ctrl+Shift+K`、`Super+F9` 這種字串，按鍵名稱同瀏覽器的
+/// `KeyboardEvent.code`（`KeyK` 也可以寫成 `K`）。`Win`、`Meta` 視同 `Super`。
+fn parse_shortcut(combo: &str) -> Result<Shortcut, String> {
+    let normalized: Vec<&str> = combo
+        .split('+')
+        .map(|part| match part.trim().to_ascii_lowercase().as_str() {
+            "win" | "meta" => "Super",
+            _ => part.trim(),
+        })
+        .collect();
+    normalized
+        .join("+")
+        .parse::<Shortcut>()
+        .map_err(|e| e.to_string())
 }
 
 /// 點執行檔時該做什麼：需要使用者動手就開視窗，否則只發一則通知。
@@ -330,4 +283,18 @@ fn spawn_idle_lock(app: AppHandle) {
             let _ = app.emit("vault:locked", ());
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_shortcut;
+
+    #[test]
+    fn parses_browser_style_key_names() {
+        for combo in ["Alt+Period", "Ctrl+Shift+K", "Ctrl+KeyK", "Win+F9", "Super+Digit1", "Alt+Space"] {
+            assert!(parse_shortcut(combo).is_ok(), "{combo} 應該解析得了");
+        }
+        assert!(parse_shortcut("Ctrl+NoSuchKey").is_err());
+        assert!(parse_shortcut("").is_err());
+    }
 }

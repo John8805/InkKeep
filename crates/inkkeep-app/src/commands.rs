@@ -269,6 +269,7 @@ pub fn lock(state: State<'_, AppState>) {
 #[tauri::command]
 pub fn search_items(
     query: String,
+    tags: Option<Vec<String>>,
     limit: Option<usize>,
     kind: Option<ItemKind>,
     workspace: Option<String>,
@@ -278,7 +279,10 @@ pub fn search_items(
     let limit = limit.unwrap_or(search::DEFAULT_LIMIT);
     let workspace = parse_workspace(workspace.as_deref())?;
     state
-        .with_vault(|vault, index| to_hits(vault.items(), index, &query, kind, workspace, limit))
+        .with_vault(|vault, index| {
+            let tags = tags.unwrap_or_default();
+            to_hits(vault.items(), index, &query, &tags, kind, workspace, limit)
+        })
         .ok_or(AppError::Locked)
 }
 
@@ -286,11 +290,12 @@ fn to_hits(
     items: &[Item],
     index: &Index,
     query: &str,
+    tags: &[String],
     kind: Option<ItemKind>,
     workspace: Option<Uuid>,
     limit: usize,
 ) -> Vec<SearchHit> {
-    search::search(index, items, query, kind, workspace, limit)
+    search::search(index, items, query, tags, kind, workspace, limit)
         .into_iter()
         .map(|i| {
             let item = &items[i];
@@ -459,11 +464,30 @@ pub fn item_delete(id: String, state: State<'_, AppState>) -> Result<(), AppErro
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct TemplateCheck {
+    /// 文法錯誤，擋存檔。
+    errors: Vec<TemplateError>,
+    /// 跟保險庫內容有關的問題（找不到引用的片語、循環引用等），不擋存檔：
+    /// 被引用的片語可能之後才建立。
+    warnings: Vec<TemplateError>,
+}
+
 #[tauri::command]
-pub fn template_validate(body: String) -> Vec<TemplateError> {
+pub fn template_validate(body: String, state: State<'_, AppState>) -> TemplateCheck {
     match Template::parse(&body) {
-        Ok(_) => Vec::new(),
-        Err(e) => vec![e],
+        Err(e) => TemplateCheck {
+            errors: vec![e],
+            warnings: Vec::new(),
+        },
+        Ok(template) => TemplateCheck {
+            errors: Vec::new(),
+            warnings: template
+                .plan(&Resolver(state.items()))
+                .err()
+                .into_iter()
+                .collect(),
+        },
     }
 }
 
@@ -528,7 +552,6 @@ pub fn insert(
     id: String,
     field: Option<SendField>,
     inputs: Option<BTreeMap<String, String>>,
-    alternate_method: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     state.touch_activity();
@@ -538,8 +561,35 @@ pub fn insert(
         parse_id(&id)?,
         field.unwrap_or(SendField::Body),
         inputs.unwrap_or_default(),
-        alternate_method.unwrap_or(false),
     )
+}
+
+/// 用預設瀏覽器開啟書籤，開啟前收起視窗。只開 http、https 網址。
+#[tauri::command]
+pub fn open_bookmark(
+    app: AppHandle,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    state.touch_activity();
+    let uuid = parse_id(&id)?;
+    let url = state
+        .with_vault(|v, _| {
+            v.get(uuid)
+                .filter(|i| i.kind == ItemKind::Bookmark)
+                .map(|i| i.body.clone())
+        })
+        .ok_or(AppError::Locked)?
+        .ok_or(AppError::NotFound { id })?;
+    if !inkkeep_win::browser::is_web_url(&url) {
+        return Err(AppError::UnsupportedUrl);
+    }
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
+    inkkeep_win::browser::open_url(&url)?;
+    let _ = state.with_vault_mut(|v| v.touch(uuid));
+    Ok(())
 }
 
 #[tauri::command]
@@ -615,6 +665,14 @@ pub fn settings_set(
     state: State<'_, AppState>,
 ) -> Result<Settings, AppError> {
     let saved = settings.sanitized();
+    let previous = Settings::load(&app);
+    if saved.hotkey != previous.hotkey && crate::apply_hotkey(&app, &saved.hotkey).is_err() {
+        // 新的註冊不起來就換回舊的，設定也不存
+        let _ = crate::apply_hotkey(&app, &previous.hotkey);
+        return Err(AppError::Hotkey {
+            combo: saved.hotkey,
+        });
+    }
     saved.save(&app).map_err(|e| AppError::VaultIo {
         path: Settings::path(&app).display().to_string(),
         message: e.to_string(),

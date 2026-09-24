@@ -11,14 +11,14 @@ export const createVault = (password, withSamples) =>
 export const checkVaultPath = (path) => invoke("check_vault_path", { path });
 export const setVaultPath = (path) => invoke("set_vault_path", { path });
 export const lock = () => invoke("lock");
-export const search = (query, limit, kind, workspace) =>
-  invoke("search_items", { query, limit, kind, workspace });
+export const search = (query, tags, limit, kind, workspace) =>
+  invoke("search_items", { query, tags, limit, kind, workspace });
 export const itemGet = (id) => invoke("item_get", { id });
 export const revealPassword = (id) => invoke("reveal_password", { id });
 export const prepareInsert = (id) => invoke("prepare_insert", { id });
 export const preview = (id, inputs) => invoke("preview", { id, inputs });
-export const insert = (id, field, inputs, alternateMethod) =>
-  invoke("insert", { id, field, inputs, alternateMethod });
+export const insert = (id, field, inputs) => invoke("insert", { id, field, inputs });
+export const openBookmark = (id) => invoke("open_bookmark", { id });
 export const copyOnly = (id, field, inputs) => invoke("copy_only", { id, field, inputs });
 export const hideWindow = () => invoke("hide_window");
 export const itemUpsert = (input) => invoke("item_upsert", { input });

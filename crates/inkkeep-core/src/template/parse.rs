@@ -55,10 +55,7 @@ impl<'a> Parser<'a> {
     }
 
     fn err(&self, offset: usize, message: &str) -> TemplateError {
-        TemplateError {
-            offset: offset as u32,
-            message: message.to_string(),
-        }
+        TemplateError::new(offset as u32, message)
     }
 
     fn run(mut self) -> Result<Vec<Node>, TemplateError> {

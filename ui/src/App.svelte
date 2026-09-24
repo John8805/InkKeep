@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import * as api from "./api.js";
   import { t, setLanguage } from "./i18n.svelte.js";
+  import { setOverrides } from "./shortcuts.svelte.js";
   import Unlock from "./Unlock.svelte";
   import Wizard from "./Wizard.svelte";
   import Search from "./Search.svelte";
@@ -13,16 +14,17 @@
 
   async function refresh() {
     vault = await api.vaultState();
-    // 啟動時的註冊失敗發生在畫面載入之前，事件收不到，從狀態補讀
-    if (vault.hotkey_conflict) hotkeyConflict = vault.hotkey_conflict;
+    // 啟動時的註冊失敗發生在畫面載入之前，事件收不到，從狀態補讀；改好快捷鍵後也從這裡清掉
+    hotkeyConflict = vault.hotkey_conflict ?? null;
   }
 
-  /// 讀取 settings.toml 的主題與語言，套用到目前畫面。
+  /// 讀取 settings.toml 的主題、語言與快捷鍵，套用到目前畫面。
   async function applyPreferences() {
     try {
       const s = await api.settingsGet();
       document.documentElement.dataset.theme = s.theme ?? "system";
       setLanguage(s.language);
+      setOverrides(s.shortcuts);
     } catch {
       document.documentElement.dataset.theme = "system";
       setLanguage("auto");

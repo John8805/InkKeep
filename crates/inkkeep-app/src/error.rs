@@ -41,10 +41,15 @@ pub enum AppError {
     WorkspaceName {
         reason: String,
     },
-    /// 送出失敗；`clipboard` 表示內容是否已留在剪貼簿
+    /// 全域快捷鍵解析或註冊失敗（被別的程式佔用、或按鍵名稱認不得）
+    Hotkey {
+        combo: String,
+    },
+    /// 書籤網址不是 http、https，不交給瀏覽器開
+    UnsupportedUrl,
+    /// 送出失敗
     SendFailed {
         reason: String,
-        clipboard: bool,
     },
     Other {
         message: String,

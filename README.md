@@ -21,7 +21,7 @@ After setup, InkKeep runs in the system tray. Press `Alt+.` to open the search w
 * Snippet placeholders: dates and times with offsets and custom formats, clipboard text, cursor position, input fields, drop-down choices, UUIDs, and references to other snippets
 * Passwords and usernames are typed with `SendInput` and never go through the clipboard
 * Two-tier keys from one master password: the vault key is cached in Windows Credential Manager, and password fields are sealed with a public key, so saving a password needs no master password
-* Filter by type (snippets, bookmarks, passwords) with Tab
+* Filter by type (snippets, bookmarks, passwords) and by tag, picked from a menu when you type `#`
 * Workspaces to keep, for example, personal and work entries apart
 * Password generator
 

@@ -4,7 +4,7 @@ English | [繁體中文](user-guide.zh-TW.md)
 
 ## Opening the window
 
-Run the executable, press `Alt+.` (configurable), or choose "Show window" from the system tray icon.
+Run the executable, press `Alt+.`, or choose "Show window" from the system tray icon.
 
 The hotkey only opens the window; pressing it again keeps the window open. Each time it opens, the window is centered on the monitor you are working on.
 
@@ -50,19 +50,29 @@ The tier 1 key in Credential Manager is protected by DPAPI with your Windows sig
 
 ## Search
 
+The table lists the default shortcuts. Change any of them under Settings → Shortcuts: click one, press the new combination and release it; it takes effect at once. The global `Alt+.` is changed there too. A shortcut can be one key held while you press another: `Tab+↓` means hold `Tab` and press `↓`. "Previous type" has no default.
+
+Pressing `Tab` on its own switches the type when you release it, so holding `Tab` for an arrow key does not switch types first.
+
 | Key | Action |
 |---|---|
-| Typing | Live search. `#tag` filters by tag |
-| `Tab` / `Shift+Tab` | Switch type: snippets → bookmarks → passwords |
+| Typing | Live search |
+| `#` | Open the tag menu and add a tag to the search |
+| `Tab` | Switch type: snippets → bookmarks → passwords |
+| `Tab+↓` / `Tab+↑` | Switch workspace: All → each workspace |
 | `↑` `↓` | Select |
 | `PageUp` / `PageDown` | Move 10 entries |
 | `Enter` | Send. For password entries with a username, choose username or password first |
 | `Shift+Enter` | Copy to the clipboard only |
-| `Ctrl+Shift+Enter` | Send once with the other input method |
+| `Ctrl+Enter` | Open a bookmark in the default browser (http and https links only) |
 | `Ctrl+N` / `Ctrl+E` | New / edit |
 | `Ctrl+,` | Settings |
 | `Ctrl+L` | Lock passwords (snippets and bookmarks stay available) |
 | `Esc` | Close the window |
+
+Typing `#` in the search box opens a list of your tags; keep typing to narrow it, use `↑` `↓` to choose, `Enter` or `Tab` to add, and `Esc` to close it. An added tag becomes a chip right where you typed it, in line with the text; you can add several, and entries must have all of them. The cursor can sit between chips, and `Backspace` or `Delete` removes the chip next to it; each chip also has a ×.
+
+A `#` you don't pick from the menu is plain text: searching for `#include` finds entries that contain it.
 
 Snippet and bookmark rows have copy and edit buttons on the right. For password entries, the preview pane has a copy button next to the username, site and password.
 
@@ -111,7 +121,7 @@ While typing a password, InkKeep checks the foreground window every 32 character
 
 ## Workspaces
 
-Snippets, bookmarks and passwords can be grouped into workspaces, such as "Personal" and "Work". Pick a workspace from the drop-down left of the search box, or choose "All" to search everything. Workspaces have no hotkey.
+Snippets, bookmarks and passwords can be grouped into workspaces, such as "Personal" and "Work". Pick a workspace from the drop-down left of the search box, or choose "All" to search everything. `Tab+↓` and `Tab+↑` switch workspaces in the order of the menu.
 
 - Every entry belongs to one workspace. The first time a vault is opened, InkKeep creates "Personal" and puts all existing entries in it
 - Add, rename and delete workspaces in the Workspaces section of Settings; only empty workspaces can be deleted
@@ -164,11 +174,9 @@ virtual_input = false       # Type passwords with scan codes, like a physical ke
 The file is at `%APPDATA%\app.inkkeep\settings.toml`. Out-of-range values are clamped to a sensible range,
 and InkKeep starts normally. Restart InkKeep after editing.
 
-To try `virtual_input` once without editing the file, press `Ctrl+Shift+Enter` to send with the other method.
-
 ## Known limitations
 
-- InkKeep cannot send input to windows running as administrator. This is Windows UIPI: a lower-privilege program cannot send input to a higher-privilege window. InkKeep notifies you; snippets and bookmarks stay on the clipboard for you to paste, passwords do not.
+- InkKeep cannot send input to windows running as administrator. This is Windows UIPI: a lower-privilege program cannot send input to a higher-privilege window. InkKeep notifies you, and the clipboard is left as it was.
 - With a Chinese IME active, virtual input mode does not work, because the IME consumes scan code events. The default Unicode mode is unaffected.
 - Local malware is out of scope. A program running as you can read InkKeep's memory and log keystrokes, as with any password manager. InkKeep protects against leaks through cloud sync, a lost laptop, and someone briefly using your computer.
 - Anyone who can sign in to your Windows account can read snippets and bookmarks. This is the trade-off for keeping the tier 1 key in Credential Manager so InkKeep opens without a password. Password entries still need the master password. To enter it every time, enable "Ask for master password at startup".

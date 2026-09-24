@@ -7,10 +7,14 @@
   import * as api from "./api.js";
   import { t, LANGUAGES } from "./i18n.svelte.js";
   import SecretPrompt from "./SecretPrompt.svelte";
+  import Shortcuts from "./Shortcuts.svelte";
+  import { keyLabel } from "./shortcuts.svelte.js";
 
   let { vault, onclose, onchanged, onpreferenceschanged } = $props();
 
   let settings = $state(null);
+  /// "main" 是設定本身；"shortcuts" 是快捷鍵設定頁
+  let page = $state("main");
   let error = $state(null);
   let notice = $state(null);
   let sample = $state("");
@@ -316,11 +320,13 @@
     }
   }
 
+  /// Esc：在快捷鍵頁是回到設定，在設定是關閉
   function onKeydown(e) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onclose();
+      if (page === "shortcuts") page = "main";
+      else onclose();
     }
   }
 
@@ -366,6 +372,16 @@
       />
     {:else if !settings}
       <p class="muted pad">{t("common.loading")}</p>
+    {:else if page === "shortcuts"}
+      <Shortcuts
+        onback={() => (page = "main")}
+        onchanged={(saved) => {
+          // 讓設定頁之後按儲存時不會把快捷鍵蓋回舊值
+          settings.hotkey = saved.hotkey;
+          settings.shortcuts = saved.shortcuts;
+          onchanged?.();
+        }}
+      />
     {:else}
       <div class="body">
         <section>
@@ -560,10 +576,13 @@
 
         <section>
           <h2>{t("settings.hotkey")}</h2>
-          <label class="inline" title={t("settings.restartHint")}>
-            {t("settings.globalHotkey")}
-            <input bind:value={settings.hotkey} spellcheck="false" placeholder="Alt+Period" />
-          </label>
+          <div class="row">
+            <span class="grow">
+              {t("settings.globalHotkey")}
+              <span class="mono muted">{keyLabel(settings.hotkey)}</span>
+            </span>
+            <button onclick={() => (page = "shortcuts")}>{t("settings.editShortcuts")}</button>
+          </div>
         </section>
 
         <section>
@@ -665,7 +684,10 @@
     <footer>
       <span class="spacer"></span>
       <button onclick={onclose}>{t("common.close")}</button>
-      <button onclick={save} disabled={!settings}>{t("common.save")}</button>
+      <!-- 快捷鍵頁的修改當場就存了 -->
+      {#if page === "main"}
+        <button onclick={save} disabled={!settings}>{t("common.save")}</button>
+      {/if}
     </footer>
   </div>
 </div>
@@ -784,6 +806,11 @@
     align-items: center;
   }
   .row input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .grow {
     flex: 1;
     min-width: 0;
   }

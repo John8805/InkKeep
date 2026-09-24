@@ -355,9 +355,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `#標籤` 形式的 token 當標籤過濾，其餘當搜尋文字。
 fn vault_order(vault: &Vault, query: &str) -> Vec<usize> {
     let index = Index::build(vault.items());
-    search::search(&index, vault.items(), query, None, None, search::DEFAULT_LIMIT)
+    let (tags, terms): (Vec<&str>, Vec<&str>) = query
+        .split_whitespace()
+        .partition(|t| t.len() > 1 && t.starts_with('#'));
+    let tags: Vec<String> = tags.iter().map(|t| t[1..].to_string()).collect();
+    search::search(
+        &index,
+        vault.items(),
+        &terms.join(" "),
+        &tags,
+        None,
+        None,
+        search::DEFAULT_LIMIT,
+    )
 }
 
 fn print_list(vault: &Vault, idxs: Vec<usize>) {

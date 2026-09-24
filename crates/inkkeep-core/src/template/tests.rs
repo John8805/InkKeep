@@ -346,10 +346,12 @@ fn deep_chain_hits_the_depth_limit() {
 #[test]
 fn missing_reference_is_reported() {
     let t = Template::parse("${snippet:不存在}").unwrap();
-    assert_eq!(
-        t.plan(&library()).unwrap_err().message,
-        "reference-not-found"
-    );
+    let e = t.plan(&library()).unwrap_err();
+    assert_eq!(e.message, "reference-not-found");
+    assert_eq!(e.detail.as_deref(), Some("不存在"), "錯誤要帶出找不到的標題");
+
+    let e = t.render(&ctx(), &library()).unwrap_err();
+    assert_eq!(e.detail.as_deref(), Some("不存在"));
 }
 
 // ---------- 預覽 ----------

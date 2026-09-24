@@ -2,6 +2,7 @@
 
 #![cfg(windows)]
 
+pub mod browser;
 pub mod chrome;
 pub mod clipboard;
 pub mod credstore;

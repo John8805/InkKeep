@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use inkkeep_core::gen::GenOpts;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -24,6 +25,9 @@ pub struct Settings {
     pub window_size: Option<(u32, u32)>,
     pub password_gen: GenOpts,
     pub inject: InjectSettings,
+    /// 搜尋視窗的快捷鍵：動作代碼 → 組合鍵（例如 `"copy" = "Shift+Enter"`）。
+    /// 只記使用者改過的；空字串表示這個動作不指定。預設值在前端 `shortcuts.svelte.js`。
+    pub shortcuts: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -41,6 +45,7 @@ impl Default for Settings {
             window_size: None,
             password_gen: GenOpts::default(),
             inject: InjectSettings::default(),
+            shortcuts: BTreeMap::new(),
         }
     }
 }

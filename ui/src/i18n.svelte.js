@@ -56,6 +56,13 @@ export function t(key, vars) {
   );
 }
 
+/// 模板錯誤轉成一句話。沒有對應翻譯時顯示原始代碼。
+export function describeTemplateError(err) {
+  const key = `tpl.${err?.message}`;
+  const text = t(key, { name: err?.detail ?? "" });
+  return text === key ? (err?.message ?? t("error.unknown")) : text;
+}
+
 /// 後端錯誤依 kind 轉成一句話。
 export function describeError(e) {
   if (!e || typeof e !== "object") return String(e ?? t("error.unknown"));
@@ -78,7 +85,7 @@ export function describeError(e) {
         })
         .join("、");
     case "Template":
-      return t("error.template", { message: e.detail?.message ?? "" });
+      return t("error.template", { message: describeTemplateError(e.detail) });
     case "VaultIo":
       return t("error.vaultIo", { message: e.detail?.message ?? "" });
     case "NotPasswordExport":
@@ -93,8 +100,12 @@ export function describeError(e) {
       return t(`error.workspaceName.${e.detail?.reason ?? "empty"}`);
     case "VaultVerifyFailed":
       return t("error.verifyFailed");
+    case "UnsupportedUrl":
+      return t("error.unsupportedUrl");
+    case "Hotkey":
+      return t("error.hotkeyTaken", { combo: e.detail?.combo ?? "" });
     case "SendFailed":
-      return t(e.detail?.clipboard ? "error.sendFailedClipboard" : "error.sendFailed", {
+      return t("error.sendFailed", {
         reason: e.detail?.reason ?? "",
       });
     default:

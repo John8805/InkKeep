@@ -22,6 +22,24 @@ pub struct TemplateError {
     pub offset: u32,
     /// i18n key。
     pub message: String,
+    /// 錯誤牽涉的名稱：找不到或循環引用的片語標題、衝突或缺值的欄位標籤。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl TemplateError {
+    pub fn new(offset: u32, message: &str) -> Self {
+        TemplateError {
+            offset,
+            message: message.to_string(),
+            detail: None,
+        }
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,10 +147,7 @@ impl Template {
         let mut stack: Vec<String> = Vec::new();
         self.collect(resolver, &mut fields, &mut cursors, &mut stack, 0)?;
         if cursors > 1 {
-            return Err(TemplateError {
-                offset: 0,
-                message: "multiple-cursors".into(),
-            });
+            return Err(TemplateError::new(0, "multiple-cursors"));
         }
         Ok(InsertPlan {
             needs_inputs: fields,
@@ -149,10 +164,7 @@ impl Template {
         depth: usize,
     ) -> Result<(), TemplateError> {
         if depth > MAX_REFERENCE_DEPTH {
-            return Err(TemplateError {
-                offset: 0,
-                message: "reference-too-deep".into(),
-            });
+            return Err(TemplateError::new(0, "reference-too-deep"));
         }
         for node in &self.nodes {
             match node {
@@ -174,14 +186,10 @@ impl Template {
                 Node::Snippet { title } => {
                     let key = title.to_lowercase();
                     if stack.contains(&key) {
-                        return Err(TemplateError {
-                            offset: 0,
-                            message: "reference-cycle".into(),
-                        });
+                        return Err(TemplateError::new(0, "reference-cycle").with_detail(title));
                     }
-                    let body = resolver.resolve(title).ok_or_else(|| TemplateError {
-                        offset: 0,
-                        message: "reference-not-found".into(),
+                    let body = resolver.resolve(title).ok_or_else(|| {
+                        TemplateError::new(0, "reference-not-found").with_detail(title)
                     })?;
                     let inner = Template::parse(&body)?;
                     stack.push(key);
@@ -206,10 +214,7 @@ fn push_field(fields: &mut Vec<InputField>, incoming: InputField) -> Result<(), 
             {
                 Ok(())
             }
-            _ => Err(TemplateError {
-                offset: 0,
-                message: "label-conflict".into(),
-            }),
+            _ => Err(TemplateError::new(0, "label-conflict").with_detail(incoming.label())),
         };
     }
     fields.push(incoming);
