@@ -210,7 +210,7 @@ export default {
   "error.emptyPassword": "Master password can't be empty",
 
   "settings.editShortcuts": "Shortcuts",
-  "shortcuts.hint": "Click a shortcut, press the new combination and release it. It is saved and takes effect at once. You can hold one key and press another, such as Tab then →.",
+  "shortcuts.hint": "Click a shortcut, press the new combination and release it. It is saved and takes effect at once. You can hold one key and press another, such as Tab then →. Actions for different types can share a combination, such as Enter for both \"Send snippet or password\" and \"Open bookmark\".",
   "shortcuts.globalGroup": "Global",
   "shortcuts.searchGroup": "Search window",
   "shortcuts.global": "Open window",
@@ -223,8 +223,7 @@ export default {
   "shortcuts.globalNeedsModifier": "Global shortcuts need Ctrl, Alt or Win, except F1–F24",
   "shortcuts.globalOneKey": "A global shortcut can only be Ctrl, Alt, Shift or Win plus one key",
   "shortcuts.inUse": "{combo} is already used by \"{name}\"",
-  "shortcuts.takeOver": "Use it here instead",
-  "shortcut.send": "Send",
+  "shortcut.send": "Send snippet or password",
   "shortcut.copy": "Copy",
   "shortcut.kindNext": "Next type",
   "shortcut.kindPrev": "Previous type",
@@ -244,4 +243,6 @@ export default {
   "search.hintOpen": "open",
   "search.onlyBookmarks": "Only bookmarks can be opened in the browser",
   "error.unsupportedUrl": "Only http and https links can be opened",
+  "shortcut.sendBookmark": "Send bookmark URL",
+  "shortcuts.overlap": "Saved. \"{names}\" uses it too; on the same entry only \"{first}\" runs",
 };

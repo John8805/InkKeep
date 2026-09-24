@@ -338,14 +338,21 @@
   ];
 </script>
 
-<div class="backdrop" role="presentation">
+<!-- 點背景時不讓焦點離開視窗：焦點掉到外面的話 Tab 與 Esc 都會失效 -->
+<!-- Esc 聽整個視窗：焦點在哪裡都能關 -->
+<svelte:window onkeydown={onKeydown} />
+
+<div
+  class="backdrop"
+  role="presentation"
+  onmousedown={(e) => e.target === e.currentTarget && e.preventDefault()}
+>
   <div
     class="modal"
     role="dialog"
     tabindex="-1"
     aria-modal="true"
     aria-label={t("settings.title")}
-    onkeydown={onKeydown}
   >
     <header>
       <strong>{t("settings.title")}</strong>

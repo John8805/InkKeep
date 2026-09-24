@@ -8,6 +8,7 @@
     defaultBindings,
     keyLabel,
     keyOf,
+    kindsOf,
     modifiersOf,
     splitCombo,
     overridesFor,
@@ -29,8 +30,7 @@
   /// 定案後還按著的鍵：放開時不能讓按鈕把它當成點擊
   let lingering = new Set();
   let busy = $state(false);
-  /// 顯示在某一列正下方的訊息：{ id, text, error, takeFrom?, combo? }
-  /// takeFrom 有值時附「改給這個」按鈕，把 combo 從那個動作移過來
+  /// 顯示在某一列正下方的訊息：{ id, text, error }
   let rowMsg = $state(null);
   /// 讀不到設定這類跟單一列無關的錯誤
   let pageError = $state(null);
@@ -46,10 +46,18 @@
     return id === "global" ? t("shortcuts.global") : t(`shortcut.${id}`);
   }
 
-  /// 已經用了這個組合的另一個動作
-  function takenBy(id, combo) {
-    if (id !== "global" && combo === hotkey) return "global";
-    return ACTIONS.find((a) => a.id !== id && bindings[a.id] === combo)?.id ?? null;
+  /// 用了同一組合、而且適用的類別有重疊的其他動作：同一筆項目上只會執行排在前面的
+  function overlapping(id, combo, next = bindings) {
+    const mine = kindsOf(id);
+    return ACTIONS.filter(
+      (a) =>
+        a.id !== id && next[a.id] === combo && kindsOf(a.id).some((k) => mine.includes(k)),
+    ).map((a) => a.id);
+  }
+
+  /// 排在前面的動作 id（同組合重疊時實際會執行的那個）
+  function firstOf(ids) {
+    return ACTIONS.find((a) => ids.includes(a.id))?.id;
   }
 
   /// 只改快捷鍵相關的欄位：設定頁上還沒按儲存的其他修改不會被一起存進去
@@ -64,7 +72,19 @@
       bindings = nextBindings;
       hotkey = saved.hotkey;
       setOverrides(saved.shortcuts);
-      if (id) rowMsg = { id, text: t("common.saved"), error: false };
+      if (id) {
+        const shared = id === "global" ? [] : overlapping(id, nextBindings[id], nextBindings);
+        rowMsg = shared.length
+          ? {
+              id,
+              text: t("shortcuts.overlap", {
+                names: shared.map(nameOf).join("、"),
+                first: nameOf(firstOf([id, ...shared])),
+              }),
+              error: true,
+            }
+          : { id, text: t("common.saved"), error: false };
+      }
       await onchanged?.(saved);
     } catch (e) {
       rowMsg = { id, text: api.describeError(e), error: true };
@@ -131,26 +151,24 @@
       rowMsg = { id, text: t("shortcuts.needsModifier"), error: true };
       return;
     }
-    const other = takenBy(id, combo);
-    if (other) {
+    // 全域快捷鍵會先被系統攔走，搜尋視窗裡同一組合永遠收不到，所以兩者不能重複。
+    // 搜尋視窗裡的動作之間可以重複
+    const clash =
+      id === "global"
+        ? ACTIONS.find((a) => bindings[a.id] === combo)?.id
+        : combo === hotkey
+          ? "global"
+          : null;
+    if (clash) {
       rowMsg = {
         id,
-        text: t("shortcuts.inUse", { combo: keyLabel(combo), name: nameOf(other) }),
+        text: t("shortcuts.inUse", { combo: keyLabel(combo), name: nameOf(clash) }),
         error: true,
-        // 全域快捷鍵一定要有值，不能被搶走
-        takeFrom: other === "global" ? null : other,
-        combo,
       };
       return;
     }
-    assign(id, combo);
-  }
-
-  function assign(id, combo, takeFrom = null) {
-    const next = { ...bindings };
-    if (takeFrom) next[takeFrom] = "";
-    if (id === "global") persist(next, combo, id);
-    else persist({ ...next, [id]: combo }, hotkey, id);
+    if (id === "global") persist(bindings, combo, id);
+    else persist({ ...bindings, [id]: combo }, hotkey, id);
   }
 
   function resetOne(id) {
@@ -219,11 +237,6 @@
   {#if rowMsg?.id === id}
     <li class="msg" class:error={rowMsg.error} role={rowMsg.error ? "alert" : "status"}>
       <span>{rowMsg.text}</span>
-      {#if rowMsg.takeFrom}
-        <button onclick={() => assign(id, rowMsg.combo, rowMsg.takeFrom)} disabled={busy}>
-          {t("shortcuts.takeOver")}
-        </button>
-      {/if}
     </li>
   {/if}
 {/snippet}

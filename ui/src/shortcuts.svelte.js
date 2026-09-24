@@ -7,10 +7,14 @@
 // 副檔名必須是 .svelte.js：裡面用了 $state。
 
 /// 所有動作與預設組合鍵，順序就是設定頁的顯示順序。空字串表示預設不指定。
+///
+/// `kinds` 是這個動作適用的項目類別，沒寫就是全部。同一組合鍵可以給好幾個動作，
+/// 按下時依選中項目的類別挑適用的；都適用時取排在前面的。
 export const ACTIONS = [
-  { id: "send", default: "Enter" },
+  { id: "send", default: "Enter", kinds: ["snippet", "password"] },
+  { id: "sendBookmark", default: "Enter", kinds: ["bookmark"] },
+  { id: "openBookmark", default: "Ctrl+Enter", kinds: ["bookmark"] },
   { id: "copy", default: "Shift+Enter" },
-  { id: "openBookmark", default: "Ctrl+Enter" },
   { id: "kindNext", default: "Tab" },
   { id: "kindPrev", default: "" },
   { id: "workspaceNext", default: "Tab+ArrowDown" },
@@ -126,8 +130,20 @@ export function splitCombo(combo) {
   };
 }
 
-function actionOf(combo) {
-  return ACTIONS.find((a) => binding(a.id) === combo)?.id ?? null;
+const ALL_KINDS = ["snippet", "bookmark", "password"];
+
+/// 動作適用的類別
+export function kindsOf(id) {
+  return ACTIONS.find((a) => a.id === id)?.kinds ?? ALL_KINDS;
+}
+
+/// 用這個組合、而且適用於 kind 的第一個動作。kind 是 null（沒選中項目）時不看類別。
+function actionOf(combo, kind) {
+  return (
+    ACTIONS.find(
+      (a) => binding(a.id) === combo && (kind == null || kindsOf(a.id).includes(kind)),
+    )?.id ?? null
+  );
 }
 
 /// 有沒有哪個組合是「按住 key 再按別的鍵」
@@ -143,7 +159,9 @@ function isChordPrefix(mods, key) {
 ///
 /// 某個鍵同時是單鍵快捷鍵、也是組合的開頭時（例如 Tab 單按換類別、Tab+→ 另有動作），
 /// 單按的動作延到放開時才執行；放開前接了別的鍵就算組合，單按的動作不執行。
-export function createMatcher() {
+///
+/// `currentKind()` 回傳目前選中項目的類別，用來在同一組合的多個動作中挑適用的。
+export function createMatcher(currentKind = () => null) {
   let held = [];
   let pending = null;
   let chordUsed = false;
@@ -158,7 +176,7 @@ export function createMatcher() {
       if (!held.includes(key)) held.push(key);
 
       if (held.length > 1) {
-        const action = actionOf([...mods, ...held].join("+"));
+        const action = actionOf([...mods, ...held].join("+"), currentKind());
         if (action) chordUsed = true;
         return { action, prevent: action !== null };
       }
@@ -167,7 +185,7 @@ export function createMatcher() {
         chordUsed = false;
         return { action: null, prevent: true };
       }
-      const action = actionOf([...mods, key].join("+"));
+      const action = actionOf([...mods, key].join("+"), currentKind());
       return { action, prevent: action !== null };
     },
 
@@ -178,7 +196,7 @@ export function createMatcher() {
       held = held.filter((k) => k !== key);
       if (pending !== key) return null;
       pending = null;
-      return chordUsed ? null : actionOf([...modifiersOf(e), key].join("+"));
+      return chordUsed ? null : actionOf([...modifiersOf(e), key].join("+"), currentKind());
     },
 
     /// 視窗失焦或被別的畫面蓋住時呼叫：放開的事件可能收不到

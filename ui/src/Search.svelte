@@ -3,7 +3,7 @@
   import { onMount, tick } from "svelte";
   import * as api from "./api.js";
   import { t } from "./i18n.svelte.js";
-  import { createMatcher, labelOf } from "./shortcuts.svelte.js";
+  import { createMatcher, kindsOf, labelOf } from "./shortcuts.svelte.js";
   import InputForm from "./InputForm.svelte";
   import SecretPrompt from "./SecretPrompt.svelte";
   import FieldChoice from "./FieldChoice.svelte";
@@ -469,7 +469,7 @@
     }
   }
 
-  const keys = createMatcher();
+  const keys = createMatcher(() => selected?.kind ?? null);
 
   /// 表單、主密碼提示、欄位選擇、編輯、設定開著時，按鍵交給它們自己處理
   const keysBlocked = () => pendingForm || secretPrompt || fieldChoice || editor || showSettings;
@@ -498,6 +498,7 @@
   function runAction(action) {
     switch (action) {
       case "send":
+      case "sendBookmark":
         activate("body");
         break;
       case "copy":
@@ -611,6 +612,8 @@
 />
 
 <div class="wrap">
+  <!-- 編輯或設定視窗開著時，後面的搜尋畫面整個停用：Tab 不會跳出視窗，點擊也不會作用 -->
+  <div class="page" inert={editor !== null || showSettings}>
   {#if vault.conflict_files?.length > 0}
     <div class="banner" role="alert">
       {t("search.conflict", { n: vault.conflict_files.length })}
@@ -843,13 +846,14 @@
   </div>
 
   <footer class="muted">
-    {#each [["send", "search.hintSend"], ["copy", "search.hintCopy"], ["openBookmark", "search.hintOpen"], ["kindNext", "search.hintFilter"], ["workspaceNext", "search.hintWorkspace"], ["close", "search.hintClose"]] as [action, text] (action)}
-      <!-- 「開啟」只對書籤有用，在書籤類別才顯示 -->
-      {#if labelOf(action) && (action !== "openBookmark" || kindFilter === "bookmark")}
+    {#each [["send", "search.hintSend"], ["sendBookmark", "search.hintSend"], ["openBookmark", "search.hintOpen"], ["copy", "search.hintCopy"], ["kindNext", "search.hintFilter"], ["workspaceNext", "search.hintWorkspace"], ["close", "search.hintClose"]] as [action, text] (action)}
+      <!-- 只顯示適用於目前類別的：書籤類別顯示書籤送出與開啟，其他類別顯示送出 -->
+      {#if labelOf(action) && kindsOf(action).includes(kindFilter)}
         <span>{labelOf(action)} {t(text)}</span>
       {/if}
     {/each}
   </footer>
+  </div>
 
   {#if editor}
     <Editor
@@ -900,6 +904,10 @@
     flex-direction: column;
     height: 100%;
     position: relative;
+  }
+  /* 只用來整批設 inert，不參與排版 */
+  .page {
+    display: contents;
   }
 
   .searchbar {

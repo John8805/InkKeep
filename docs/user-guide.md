@@ -52,6 +52,8 @@ The tier 1 key in Credential Manager is protected by DPAPI with your Windows sig
 
 The table lists the default shortcuts. Change any of them under Settings → Shortcuts: click one, press the new combination and release it; it takes effect at once. The global `Alt+.` is changed there too. A shortcut can be one key held while you press another: `Tab+↓` means hold `Tab` and press `↓`. "Previous type" has no default.
 
+Actions for different types can share a combination; the selected entry decides which one runs. By default `Enter` is both "Send snippet or password" and "Send bookmark URL". To open bookmarks in the browser with `Enter`, set "Open bookmark" to `Enter` and "Send bookmark URL" to `Ctrl+Enter`.
+
 Pressing `Tab` on its own switches the type when you release it, so holding `Tab` for an arrow key does not switch types first.
 
 | Key | Action |

@@ -212,7 +212,7 @@ export default {
   "error.emptyPassword": "主密碼不能空白",
 
   "settings.editShortcuts": "快捷鍵設定",
-  "shortcuts.hint": "點一下組合鍵，按下新的組合再放開就會改好並立刻生效。可以按住一個鍵再按另一個，例如按住 Tab 再按 →。",
+  "shortcuts.hint": "點一下組合鍵，按下新的組合再放開就會改好並立刻生效。可以按住一個鍵再按另一個，例如按住 Tab 再按 →。同一組合可以給不同類別的動作，例如「送出片語、密碼」和「開啟書籤」都用 Enter。",
   "shortcuts.globalGroup": "全域",
   "shortcuts.searchGroup": "搜尋視窗",
   "shortcuts.global": "叫出視窗",
@@ -225,8 +225,7 @@ export default {
   "shortcuts.globalNeedsModifier": "全域快捷鍵要搭配 Ctrl、Alt 或 Win，F1–F24 除外",
   "shortcuts.globalOneKey": "全域快捷鍵只能是 Ctrl、Alt、Shift、Win 加一個鍵",
   "shortcuts.inUse": "{combo} 已經給「{name}」用了",
-  "shortcuts.takeOver": "改給這個",
-  "shortcut.send": "送出",
+  "shortcut.send": "送出片語、密碼",
   "shortcut.copy": "複製",
   "shortcut.kindNext": "類別往右",
   "shortcut.kindPrev": "類別往左",
@@ -246,4 +245,6 @@ export default {
   "search.hintOpen": "開啟",
   "search.onlyBookmarks": "只有書籤能用瀏覽器開啟",
   "error.unsupportedUrl": "只能開啟 http、https 開頭的網址",
+  "shortcut.sendBookmark": "送出書籤網址",
+  "shortcuts.overlap": "已儲存。「{names}」也用這組，同一筆項目上只會執行「{first}」",
 };
